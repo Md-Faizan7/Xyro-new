@@ -1,0 +1,6 @@
+{
+  "name": "StudyBuddy AI",
+  "description": "An interactive study companion that breaks down questions conceptually before delivering comprehensive, step-by-step solutions with flashcards and quizzes.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

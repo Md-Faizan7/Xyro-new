@@ -1,0 +1,100 @@
+@import "tailwindcss";
+
+@layer base {
+  :root,
+  .theme-midnight {
+    --background: #090d16;
+    --surface: #0f1523;
+    --card: #151d30;
+    --muted: #1e293b;
+    --border: #23304a;
+    --foreground: #f1f5f9;
+    --muted-foreground: #94a3b8;
+    --primary: #6366f1;
+    --primary-foreground: #ffffff;
+    --accent: #06b6d4;
+  }
+
+  .theme-dark {
+    --background: #09090b;
+    --surface: #121215;
+    --card: #18181b;
+    --muted: #27272a;
+    --border: #2e2e33;
+    --foreground: #fafafa;
+    --muted-foreground: #a1a1aa;
+    --primary: #38bdf8;
+    --primary-foreground: #09090b;
+    --accent: #818cf8;
+  }
+
+  .theme-cyber {
+    --background: #06040c;
+    --surface: #0e091c;
+    --card: #160f2d;
+    --muted: #251a4a;
+    --border: #352668;
+    --foreground: #faf5ff;
+    --muted-foreground: #c084fc;
+    --primary: #c026d3;
+    --primary-foreground: #ffffff;
+    --accent: #22d3ee;
+  }
+
+  .theme-emerald {
+    --background: #02120b;
+    --surface: #052014;
+    --card: #082d1c;
+    --muted: #0d3d27;
+    --border: #145337;
+    --foreground: #ecfdf5;
+    --muted-foreground: #6ee7b7;
+    --primary: #10b981;
+    --primary-foreground: #02120b;
+    --accent: #34d399;
+  }
+
+  .theme-sunset {
+    --background: #140d0b;
+    --surface: #1e1310;
+    --card: #291915;
+    --muted: #3d241f;
+    --border: #52302a;
+    --foreground: #fff7ed;
+    --muted-foreground: #fdba74;
+    --primary: #f59e0b;
+    --primary-foreground: #140d0b;
+    --accent: #f43f5e;
+  }
+
+  .theme-light {
+    --background: #f8fafc;
+    --surface: #ffffff;
+    --card: #ffffff;
+    --muted: #f1f5f9;
+    --border: #e2e8f0;
+    --foreground: #0f172a;
+    --muted-foreground: #64748b;
+    --primary: #4f46e5;
+    --primary-foreground: #ffffff;
+    --accent: #0284c7;
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  }
+}
+
+/* Custom utility colors mapped to CSS variables */
+.bg-background { background-color: var(--background); }
+.bg-surface { background-color: var(--surface); }
+.bg-card { background-color: var(--card); }
+.bg-muted { background-color: var(--muted); }
+.border-border { border-color: var(--border); }
+.text-foreground { color: var(--foreground); }
+.text-muted-foreground { color: var(--muted-foreground); }
+.text-primary { color: var(--primary); }
+.bg-primary { background-color: var(--primary); }
+.text-primary-foreground { color: var(--primary-foreground); }
