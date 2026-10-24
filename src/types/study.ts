@@ -1,4 +1,4 @@
-export type PersonaId = 'jarvis' | 'vision' | 'xyro' | 'thala' | 'zyro';
+export type PersonaId = 'jarvis' | 'vision' | 'xyro' | 'thala' | 'zyro' | 'Meow';
 
 export type ThemeId = 'cyber' | 'midnight' | 'slate' | 'emerald' | 'sunset';
 

@@ -15,7 +15,7 @@ import {
   FileText,
 } from 'lucide-react';
 import { PersonaId, UserStats, ThemeId, PomodoroState } from '../types/study';
-import { PERSONAS, THEMES } from '../data/constants';
+import { PERSONAS, THEMES, AVAILABLE_PERSONA_IDS } from '../data/constants';
 import { PomodoroTimer } from './PomodoroTimer';
 
 interface HeaderProps {
@@ -55,12 +55,13 @@ export const Header: React.FC<HeaderProps> = ({
   const [showThemeMenu, setShowThemeMenu] = useState(false);
 
   const persona = PERSONAS[currentPersona] || PERSONAS.jarvis;
-  const activeTheme = THEMES[currentTheme] || THEMES.cyber;
+  const activeTheme = THEMES[currentTheme] || THEMES.slate;
 
   const getPersonaIcon = (id: PersonaId) => {
     switch (id) {
       case 'vision':
         return <GraduationCap className="w-4 h-4" />;
+      case 'Meow':
       case 'xyro':
       case 'zyro':
         return <Lightbulb className="w-4 h-4" />;
@@ -73,31 +74,29 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-slate-950/85 backdrop-blur-xl border-b border-slate-800/80 transition-colors">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+    <header className="sticky top-0 z-40 bg-zinc-950/90 backdrop-blur-md border-b border-zinc-800/80 transition-colors">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-15 flex items-center justify-between">
         {/* Left: Brand Zyro + Pomodoro Timer */}
         <div className="flex items-center space-x-3 sm:space-x-5">
           <div
             className="flex items-center space-x-2.5 cursor-pointer group"
             onClick={onNewQuestion}
           >
-            <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-cyan-500 via-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/25 ring-2 ring-indigo-500/30 group-hover:scale-105 transition-transform">
-              <Zap className="w-4 h-4 fill-current" />
+            <div className="w-8 h-8 rounded-xl bg-zinc-900 border border-zinc-700/80 flex items-center justify-center text-zinc-100 group-hover:border-zinc-500 transition-colors">
+              <Zap className="w-4 h-4 text-zinc-200" />
             </div>
             <div>
-              <div className="flex items-center space-x-1.5">
-                <span className="font-extrabold text-lg tracking-tight text-white flex items-center">
-                  Xyro<span className="text-cyan-400">.ai</span>
+              <div className="flex items-center space-x-2">
+                <span className="font-semibold text-base tracking-tight text-zinc-100">
+                  Xyro<span className="text-zinc-400 font-normal">.ai</span>
                 </span>
-                <span className="text-[10px] font-bold tracking-wider uppercase px-2 py-0.2 rounded-full bg-cyan-950/80 text-cyan-400 border border-cyan-800/80 shadow-2xs">
-                  Points
-                </span>
+                <span className="text-[11px] text-zinc-400">· Study Engine</span>
               </div>
             </div>
           </div>
 
           {/* Pomodoro Timer in Top Navigation */}
-          <div className="border-l border-slate-800 pl-3 sm:pl-4">
+          <div className="border-l border-zinc-800 pl-3 sm:pl-4">
             <PomodoroTimer pomodoro={pomodoro} onUpdatePomodoro={onUpdatePomodoro} />
           </div>
         </div>
@@ -216,7 +215,7 @@ export const Header: React.FC<HeaderProps> = ({
                   <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                     Select Chatbot
                   </div>
-                  {(Object.keys(PERSONAS) as PersonaId[]).map((pId) => {
+                  {AVAILABLE_PERSONA_IDS.map((pId) => {
                     const p = PERSONAS[pId];
                     const isSelected = pId === currentPersona;
                     return (
@@ -228,25 +227,25 @@ export const Header: React.FC<HeaderProps> = ({
                         }}
                         className={`w-full text-left p-2.5 rounded-xl transition-all flex items-start space-x-3 mb-1 cursor-pointer ${
                           isSelected
-                            ? 'bg-slate-800 border border-slate-700 shadow-xs'
-                            : 'hover:bg-slate-800/50'
+                            ? 'bg-zinc-800 border border-zinc-700 shadow-xs'
+                            : 'hover:bg-zinc-800/50'
                         }`}
                       >
                         <div
-                          className={`w-7 h-7 rounded-xl bg-gradient-to-br ${p.avatarColor} text-white flex items-center justify-center text-xs shadow-md shrink-0 mt-0.5`}
+                          className={`w-7 h-7 rounded-xl ${p.avatarColor} flex items-center justify-center text-xs shrink-0 mt-0.5`}
                         >
                           {getPersonaIcon(pId)}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between">
-                            <span className="font-bold text-xs text-white">
+                            <span className="font-semibold text-xs text-zinc-100">
                               {p.name}
                             </span>
-                            <span className="text-[10px] text-cyan-400 font-medium">
+                            <span className="text-[10px] text-zinc-400 font-medium">
                               {p.role}
                             </span>
                           </div>
-                          <p className="text-[11px] text-slate-400 line-clamp-1 mt-0.5">
+                          <p className="text-[11px] text-zinc-400 line-clamp-1 mt-0.5">
                             {p.tagline}
                           </p>
                         </div>

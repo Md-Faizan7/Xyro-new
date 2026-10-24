@@ -43,7 +43,7 @@ export default function App() {
       const storedTheme = localStorage.getItem(THEME_STORAGE_KEY) as ThemeId;
       if (storedTheme && THEMES[storedTheme]) return storedTheme;
     } catch (e) {}
-    return 'cyber';
+    return 'slate';
   });
 
   // Pomodoro timer state
@@ -104,7 +104,7 @@ export default function App() {
     return [];
   });
 
-  const [currentPersona, setCurrentPersona] = useState<PersonaId>('xyro');
+  const [currentPersona, setCurrentPersona] = useState<PersonaId>('jarvis');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [loadingStep, setLoadingStep] = useState<number>(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -203,9 +203,24 @@ export default function App() {
         }),
       });
 
+      const contentType = response.headers.get('content-type') || '';
+
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `Server responded with ${response.status}`);
+        let errorMsg = `Server responded with ${response.status}`;
+        if (contentType.includes('application/json')) {
+          const errorData = await response.json().catch(() => ({}));
+          if (errorData.error) errorMsg = errorData.error;
+        } else {
+          const text = await response.text().catch(() => '');
+          if (text && !text.includes('<!doctype')) {
+            errorMsg = text.slice(0, 120);
+          }
+        }
+        throw new Error(errorMsg);
+      }
+
+      if (!contentType.includes('application/json')) {
+        throw new Error('Server returned non-JSON response. Please try again.');
       }
 
       const data = await response.json();
@@ -373,63 +388,63 @@ export default function App() {
 
         {/* LOADING STATE ANIMATION: 2-Stage Point Engine Visualizer */}
         {isLoading && (
-          <div className="p-8 sm:p-12 rounded-3xl bg-slate-900/90 border border-cyan-500/30 shadow-2xl max-w-2xl mx-auto text-center space-y-6 animate-in fade-in zoom-in-95 duration-200">
-            <div className="w-16 h-16 rounded-3xl bg-cyan-950/80 border border-cyan-800 text-cyan-400 mx-auto flex items-center justify-center animate-pulse">
-              <Zap className="w-8 h-8 fill-current" />
+          <div className="p-8 sm:p-10 rounded-2xl bg-zinc-900/90 border border-zinc-800 shadow-xl max-w-xl mx-auto text-center space-y-5 animate-in fade-in duration-150">
+            <div className="w-12 h-12 rounded-xl bg-zinc-800 border border-zinc-700 text-zinc-100 mx-auto flex items-center justify-center animate-pulse">
+              <Zap className="w-5 h-5 text-zinc-200" />
             </div>
 
             <div>
-              <h3 className="text-xl font-extrabold text-white">
-                Xyro.ai Point Breakdown Engine
+              <h3 className="text-lg font-bold text-zinc-100">
+                Generating Breakdown
               </h3>
-              <p className="text-xs text-slate-400 mt-1">
+              <p className="text-xs text-zinc-400 mt-1">
                 {importedNotes.length > 0
-                  ? `Incorporating your ${importedNotes.length} imported notes & lecture slides...`
-                  : 'Deconstructing your question into clean, bite-sized bullet points'}
+                  ? `Incorporating ${importedNotes.length} attached note${importedNotes.length > 1 ? 's' : ''}...`
+                  : 'Synthesizing concise, high-yield bullet points'}
               </p>
             </div>
 
             {/* Stepper */}
-            <div className="space-y-3 max-w-md mx-auto text-left text-xs">
+            <div className="space-y-2 max-w-sm mx-auto text-left text-xs">
               <div
-                className={`p-3 rounded-xl border flex items-center space-x-3 transition-all ${
+                className={`p-2.5 rounded-lg border flex items-center space-x-2.5 transition-all ${
                   loadingStep >= 1
-                    ? 'border-cyan-500 bg-cyan-950/70 text-cyan-200 font-bold'
-                    : 'border-slate-800 opacity-40 text-slate-500'
+                    ? 'border-zinc-700 bg-zinc-800/80 text-zinc-200 font-semibold'
+                    : 'border-zinc-800/60 opacity-40 text-zinc-500'
                 }`}
               >
-                <div className="w-5 h-5 rounded-full bg-cyan-500 text-black font-extrabold text-[10px] flex items-center justify-center">
+                <div className="w-4 h-4 rounded-full bg-zinc-700 text-zinc-200 font-bold text-[10px] flex items-center justify-center">
                   1
                 </div>
                 <span>
-                  {PERSONAS[currentPersona]?.name || 'Xyro'} synthesizing problem intent & concepts...
+                  {PERSONAS[currentPersona]?.name || 'Xyro'} extracting problem intent & concepts...
                 </span>
               </div>
 
               <div
-                className={`p-3 rounded-xl border flex items-center space-x-3 transition-all ${
+                className={`p-2.5 rounded-lg border flex items-center space-x-2.5 transition-all ${
                   loadingStep >= 2
-                    ? 'border-indigo-500 bg-indigo-950/70 text-indigo-200 font-bold'
-                    : 'border-slate-800 opacity-40 text-slate-500'
+                    ? 'border-zinc-700 bg-zinc-800/80 text-zinc-200 font-semibold'
+                    : 'border-zinc-800/60 opacity-40 text-zinc-500'
                 }`}
               >
-                <div className="w-5 h-5 rounded-full bg-indigo-500 text-white font-extrabold text-[10px] flex items-center justify-center">
+                <div className="w-4 h-4 rounded-full bg-zinc-700 text-zinc-200 font-bold text-[10px] flex items-center justify-center">
                   2
                 </div>
-                <span>Formulating Xyro&apos;s concise step-by-step master solution...</span>
+                <span>Formulating step-by-step master solution...</span>
               </div>
 
               <div
-                className={`p-3 rounded-xl border flex items-center space-x-3 transition-all ${
+                className={`p-2.5 rounded-lg border flex items-center space-x-2.5 transition-all ${
                   loadingStep >= 3
-                    ? 'border-emerald-500 bg-emerald-950/70 text-emerald-200 font-bold'
-                    : 'border-slate-800 opacity-40 text-slate-500'
+                    ? 'border-zinc-700 bg-zinc-800/80 text-zinc-200 font-semibold'
+                    : 'border-zinc-800/60 opacity-40 text-zinc-500'
                 }`}
               >
-                <div className="w-5 h-5 rounded-full bg-emerald-500 text-black font-extrabold text-[10px] flex items-center justify-center">
+                <div className="w-4 h-4 rounded-full bg-zinc-700 text-zinc-200 font-bold text-[10px] flex items-center justify-center">
                   3
                 </div>
-                <span>Crafting interactive quiz, flashcards & follow-up prompts...</span>
+                <span>Generating quick practice quiz & review cards...</span>
               </div>
             </div>
           </div>
@@ -448,28 +463,27 @@ export default function App() {
 
         {/* CLEAN BLANK STATE (Shown when no questions have been asked yet) */}
         {!isLoading && !currentSession && (
-          <div className="p-8 sm:p-12 rounded-3xl bg-slate-900/60 border border-slate-800 text-center max-w-3xl mx-auto space-y-6">
-            <div className="w-14 h-14 rounded-2xl bg-cyan-950 text-cyan-400 mx-auto flex items-center justify-center border border-cyan-800/60 shadow-lg">
-              <Zap className="w-7 h-7 fill-current" />
+          <div className="p-8 sm:p-10 rounded-2xl bg-zinc-900/40 border border-zinc-800/80 text-center max-w-2xl mx-auto space-y-5">
+            <div className="w-11 h-11 rounded-xl bg-zinc-800 text-zinc-200 mx-auto flex items-center justify-center border border-zinc-700">
+              <Zap className="w-5 h-5 text-zinc-300" />
             </div>
 
             <div>
-              <h2 className="text-xl sm:text-2xl font-extrabold text-white">
-                Welcome to Xyro.ai
+              <h2 className="text-xl font-bold text-zinc-100">
+                Start Studying
               </h2>
-              <p className="text-xs sm:text-sm text-slate-400 max-w-lg mx-auto mt-2 leading-relaxed">
-                Your workspace is clean. Type your question below or upload your handwritten notes/PDFs.
-                Suggested topics, question breakdowns, and flashcards will appear dynamically as you study.
+              <p className="text-xs sm:text-sm text-zinc-400 max-w-md mx-auto mt-1.5 leading-relaxed">
+                Type or dictate your question below. You can also import lecture slides, diagrams, or handwritten notes to personalize explanations.
               </p>
             </div>
 
-            <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+            <div className="flex flex-wrap items-center justify-center gap-2.5 pt-1">
               <button
                 onClick={() => setIsNotesModalOpen(true)}
-                className="px-4 py-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-bold text-slate-200 flex items-center space-x-2 transition-all cursor-pointer"
+                className="px-3.5 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-xs font-semibold text-zinc-200 flex items-center space-x-2 transition-all cursor-pointer"
               >
-                <Upload className="w-4 h-4 text-cyan-400" />
-                <span>Import Notes / PDFs</span>
+                <Upload className="w-3.5 h-3.5 text-zinc-400" />
+                <span>Import Notes</span>
               </button>
 
               <button
@@ -477,9 +491,9 @@ export default function App() {
                   const el = document.getElementById('question-input-section');
                   if (el) el.scrollIntoView({ behavior: 'smooth' });
                 }}
-                className="px-4 py-2.5 rounded-2xl bg-cyan-600 hover:bg-cyan-500 text-xs font-bold text-white shadow-md shadow-cyan-500/25 flex items-center space-x-2 transition-all cursor-pointer"
+                className="px-3.5 py-2 rounded-xl bg-zinc-100 hover:bg-white text-zinc-900 text-xs font-semibold flex items-center space-x-2 transition-all cursor-pointer"
               >
-                <ArrowDown className="w-4 h-4" />
+                <ArrowDown className="w-3.5 h-3.5" />
                 <span>Ask Question Below</span>
               </button>
             </div>

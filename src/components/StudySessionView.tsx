@@ -18,6 +18,9 @@ import {
   Send,
   Zap,
   CheckCheck,
+  Mic,
+  MicOff,
+  Radio,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import {
@@ -30,6 +33,7 @@ import {
 } from '../types/study';
 import { PERSONAS, THEMES } from '../data/constants';
 import { speechManager } from '../utils/speech';
+import { voiceRecognition } from '../utils/voiceRecognition';
 
 interface StudySessionViewProps {
   session: SavedSession;
@@ -48,6 +52,12 @@ export const StudySessionView: React.FC<StudySessionViewProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'solution' | 'quiz' | 'flashcards' | 'chat' | 'notes'>('solution');
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [activeSpokenMessageId, setActiveSpokenMessageId] = useState<string | null>(null);
+  const [autoSpeakReply, setAutoSpeakReply] = useState(true);
+  const [isVoiceListening, setIsVoiceListening] = useState(false);
+  const [isVoiceProcessing, setIsVoiceProcessing] = useState(false);
+  const [interimVoiceText, setInterimVoiceText] = useState('');
+  const [voiceError, setVoiceError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
 
@@ -76,25 +86,75 @@ export const StudySessionView: React.FC<StudySessionViewProps> = ({
   const [isLoadingHint, setIsLoadingHint] = useState(false);
 
   const persona = PERSONAS[session.persona] || PERSONAS.jarvis;
-  const theme = THEMES[currentTheme] || THEMES.cyber;
+  const theme = THEMES[currentTheme] || THEMES.slate;
   const res = session.response;
 
   // Sync speech state
   useEffect(() => {
-    speechManager.onStateChange((speaking) => {
+    speechManager.onStateChange((speaking, activeId) => {
       setIsSpeaking(speaking);
+      setActiveSpokenMessageId(activeId);
     });
     return () => {
       speechManager.stop();
+      voiceRecognition.stop();
     };
   }, []);
 
+  const handleToggleVoiceListen = async () => {
+    if (isVoiceListening || isVoiceProcessing) {
+      voiceRecognition.stop();
+      setIsVoiceListening(false);
+      setInterimVoiceText('');
+    } else {
+      speechManager.stop();
+      setVoiceError(null);
+      setInterimVoiceText('');
+      setIsVoiceProcessing(false);
+
+      const started = await voiceRecognition.start({
+        onStart: () => {
+          setIsVoiceListening(true);
+          setVoiceError(null);
+        },
+        onInterim: (interim) => {
+          setInterimVoiceText(interim);
+        },
+        onFinal: (finalTranscript) => {
+          setChatInput((prev) => {
+            const trimmed = prev.trim();
+            return trimmed ? `${trimmed} ${finalTranscript}` : finalTranscript;
+          });
+          setInterimVoiceText('');
+        },
+        onProcessing: (proc) => {
+          setIsVoiceProcessing(proc);
+        },
+        onError: (err) => {
+          setVoiceError(err);
+          setIsVoiceListening(false);
+          setIsVoiceProcessing(false);
+          setInterimVoiceText('');
+        },
+        onEnd: () => {
+          setIsVoiceListening(false);
+          setIsVoiceProcessing(false);
+          setInterimVoiceText('');
+        },
+      });
+
+      if (!started && !voiceRecognition.isSupported()) {
+        setVoiceError('Microphone access is not supported in this browser. Please use Google Chrome, Edge, or Safari.');
+      }
+    }
+  };
+
   const handleToggleSpeech = () => {
-    if (isSpeaking) {
+    if (isSpeaking && activeSpokenMessageId === 'main-solution') {
       speechManager.stop();
     } else {
       const textToRead = `${persona.name} says: ${res.studyBuddyExplanation.buddyGreeting}. Direct solution: ${res.geminiSolution.directAnswer}. Key takeaway: ${res.geminiSolution.keyTakeaway}`;
-      speechManager.speak(textToRead, session.persona);
+      speechManager.speak(textToRead, session.persona, 'main-solution');
     }
   };
 
@@ -210,6 +270,11 @@ export const StudySessionView: React.FC<StudySessionViewProps> = ({
         ...session,
         chatMessages: finalChat,
       });
+
+      // Automatically speak reply if voice answers are toggled ON
+      if (autoSpeakReply) {
+        speechManager.speak(botMsg.content, session.persona, botMsg.id);
+      }
     } catch (err: any) {
       const errMsg: ChatMessage = {
         id: `err-${Date.now()}`,
@@ -242,8 +307,8 @@ export const StudySessionView: React.FC<StudySessionViewProps> = ({
           hintNumber: socraticHints.length + 1,
         }),
       });
-      const data = await response.json();
-      if (data.hint) {
+      const data = await response.json().catch(() => ({}));
+      if (response.ok && data.hint) {
         setSocraticHints((prev) => [...prev, data.hint]);
       }
     } catch (err) {
@@ -264,8 +329,8 @@ export const StudySessionView: React.FC<StudySessionViewProps> = ({
           const cleanLine = line.replace(/^[•\-\*]\s*/, '').trim();
           return (
             <div key={idx} className="flex items-start space-x-2.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 mt-2 shrink-0" />
-              <span className="text-sm leading-relaxed text-slate-200">{cleanLine}</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 mt-2 shrink-0" />
+              <span className="text-sm leading-relaxed text-zinc-300">{cleanLine}</span>
             </div>
           );
         })}
@@ -446,21 +511,21 @@ export const StudySessionView: React.FC<StudySessionViewProps> = ({
   return (
     <div className="space-y-6 max-w-5xl mx-auto pb-16">
       {/* 1. QUESTION HEADER CARD */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+      <div className="bg-zinc-900/80 border border-zinc-800 rounded-2xl p-6 sm:p-7 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3.5">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="px-3 py-1 rounded-full text-xs font-bold bg-cyan-950/80 text-cyan-300 border border-cyan-800/80 capitalize">
+            <span className="px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-800 text-zinc-300 border border-zinc-700 capitalize">
               {session.subject}
             </span>
-            <span className="px-3 py-1 rounded-full text-xs font-medium bg-slate-800/80 text-slate-300 border border-slate-700/60">
+            <span className="px-2.5 py-1 rounded-md text-xs font-normal bg-zinc-800/60 text-zinc-400 border border-zinc-700/60">
               {session.level}
             </span>
-            <span className="px-3 py-1 rounded-full text-xs font-bold border border-slate-700 bg-slate-800/90 flex items-center space-x-1.5">
-              <span className={`w-2 h-2 rounded-full bg-gradient-to-r ${persona.avatarColor}`} />
-              <span className="text-white">{persona.name}</span>
+            <span className="px-2.5 py-1 rounded-md text-xs font-medium border border-zinc-700 bg-zinc-800 flex items-center space-x-1.5">
+              <span className="w-2 h-2 rounded-full bg-zinc-400" />
+              <span className="text-zinc-200">{persona.name}</span>
             </span>
             {session.mode === 'socratic' && (
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-950/80 text-amber-300 border border-amber-800/80">
+              <span className="px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-800 text-zinc-300 border border-zinc-700">
                 Socratic Mode
               </span>
             )}
@@ -470,23 +535,23 @@ export const StudySessionView: React.FC<StudySessionViewProps> = ({
           <div className="flex items-center space-x-1.5 sm:space-x-2">
             <button
               onClick={handleToggleSpeech}
-              className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center space-x-1.5 transition-all cursor-pointer ${
+              className={`px-3 py-1.5 rounded-lg border text-xs font-medium flex items-center space-x-1.5 transition-all cursor-pointer ${
                 isSpeaking
                   ? 'bg-rose-950/80 border-rose-800 text-rose-300 animate-pulse'
-                  : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:bg-slate-700'
+                  : 'bg-zinc-800 border-zinc-700 text-zinc-300 hover:bg-zinc-700'
               }`}
-              title={isSpeaking ? 'Stop read aloud' : 'Listen to Xyro explanation'}
+              title={isSpeaking ? 'Stop read aloud' : 'Listen to explanation'}
             >
-              {isSpeaking ? <VolumeX className="w-3.5 h-3.5 text-rose-400" /> : <Volume2 className="w-3.5 h-3.5 text-cyan-400" />}
+              {isSpeaking ? <VolumeX className="w-3.5 h-3.5 text-rose-400" /> : <Volume2 className="w-3.5 h-3.5 text-zinc-400" />}
               <span className="hidden sm:inline">{isSpeaking ? 'Stop' : 'Read Points'}</span>
             </button>
 
             <button
               onClick={handleBookmarkToggle}
-              className={`p-2 rounded-xl border transition-all cursor-pointer ${
+              className={`p-2 rounded-lg border transition-all cursor-pointer ${
                 session.bookmarked
-                  ? 'bg-amber-950/80 border-amber-800 text-amber-300'
-                  : 'bg-slate-800/80 border-slate-700 text-slate-400 hover:text-white'
+                  ? 'bg-zinc-800 border-zinc-600 text-zinc-100'
+                  : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-white'
               }`}
               title="Bookmark session"
             >
@@ -495,23 +560,23 @@ export const StudySessionView: React.FC<StudySessionViewProps> = ({
 
             <button
               onClick={handleCopySummary}
-              className="p-2 rounded-xl border bg-slate-800/80 border-slate-700 text-slate-300 hover:bg-slate-700 transition-all cursor-pointer"
+              className="p-2 rounded-lg border bg-zinc-800 border-zinc-700 text-zinc-300 hover:bg-zinc-700 transition-all cursor-pointer"
               title="Copy point summary"
             >
-              {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+              {copied ? <Check className="w-4 h-4 text-zinc-200" /> : <Copy className="w-4 h-4" />}
             </button>
           </div>
         </div>
 
         {/* The Question */}
-        <h2 className="text-xl sm:text-2xl font-extrabold text-white leading-snug">
+        <h2 className="text-lg sm:text-xl font-bold text-zinc-100 leading-snug">
           &ldquo;{session.question}&rdquo;
         </h2>
 
         {/* Short Goal Pill */}
         {res.questionSummary && (
-          <div className="mt-3 inline-flex items-center space-x-2 px-3 py-1 rounded-xl bg-slate-950/60 border border-slate-800 text-xs text-slate-400 font-medium">
-            <span className="font-bold text-cyan-400">Core Goal:</span>
+          <div className="mt-3 inline-flex items-center space-x-2 px-3 py-1 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-400 font-normal">
+            <span className="font-semibold text-zinc-200">Core Goal:</span>
             <span>{res.questionSummary}</span>
           </div>
         )}
@@ -519,38 +584,33 @@ export const StudySessionView: React.FC<StudySessionViewProps> = ({
 
       {/* Socratic Hint Box if applicable */}
       {session.mode === 'socratic' && (
-        <div className="bg-amber-950/40 border border-amber-800/70 rounded-3xl p-5 sm:p-6 shadow-md">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 shadow-sm">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center space-x-2">
-              <Lightbulb className="w-5 h-5 text-amber-400" />
-              <h3 className="font-bold text-white text-base">
+              <Lightbulb className="w-4 h-4 text-zinc-300" />
+              <h3 className="font-semibold text-zinc-100 text-sm">
                 Socratic Guided Thinking
               </h3>
             </div>
             <button
               onClick={handleRequestHint}
               disabled={isLoadingHint}
-              className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold shadow-xs disabled:opacity-50 transition-all cursor-pointer"
+              className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 text-xs font-semibold disabled:opacity-50 transition-all cursor-pointer"
             >
               {isLoadingHint ? 'Generating hint...' : `Get Hint #${socraticHints.length + 1}`}
             </button>
           </div>
 
-          <p className="text-xs text-slate-300 mb-2">
-            Try answering yourself using {persona.name}&apos;s guidance before looking at Xyro&apos;s solution!
+          <p className="text-xs text-zinc-400 mb-2">
+            Try answering yourself using {persona.name}&apos;s guidance before viewing full solution.
           </p>
 
           {socraticHints.length > 0 && (
             <div className="space-y-2 mt-3">
               {socraticHints.map((hint, idx) => (
-                <div
-                  key={idx}
-                  className="p-3.5 rounded-2xl bg-slate-900 border border-amber-800/80 text-xs sm:text-sm text-slate-200 flex items-start space-x-2.5"
-                >
-                  <span className="px-2 py-0.5 rounded-full bg-amber-950 text-amber-300 text-[10px] font-bold shrink-0 mt-0.5 border border-amber-800">
-                    Hint {idx + 1}
-                  </span>
-                  <span>{hint}</span>
+                <div key={idx} className="p-3 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-300">
+                  <span className="font-semibold text-zinc-200">Hint {idx + 1}: </span>
+                  {hint}
                 </div>
               ))}
             </div>
@@ -559,32 +619,32 @@ export const StudySessionView: React.FC<StudySessionViewProps> = ({
       )}
 
       {/* NAVIGATION TABS: Point Breakdown, Quiz, Flashcards, Chat, Notes */}
-      <div className="flex items-center space-x-2 overflow-x-auto pb-1 border-b border-slate-800 text-xs sm:text-sm font-semibold">
+      <div className="flex items-center space-x-1.5 overflow-x-auto p-1 rounded-xl bg-zinc-900/60 border border-zinc-800 text-xs sm:text-sm font-medium">
         <button
           onClick={() => setActiveTab('solution')}
-          className={`flex items-center space-x-2 px-4 py-2.5 rounded-2xl transition-all cursor-pointer ${
+          className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg transition-all cursor-pointer ${
             activeTab === 'solution'
-              ? 'bg-cyan-600 text-white font-bold shadow-lg shadow-cyan-500/25'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              ? 'bg-zinc-800 text-zinc-100 font-semibold border border-zinc-700/80 shadow-xs'
+              : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'
           }`}
         >
-          <Zap className="w-4 h-4" />
+          <Zap className="w-3.5 h-3.5" />
           <span>Point Breakdown</span>
         </button>
 
         <button
           onClick={() => setActiveTab('quiz')}
-          className={`flex items-center space-x-2 px-4 py-2.5 rounded-2xl transition-all cursor-pointer ${
+          className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg transition-all cursor-pointer ${
             activeTab === 'quiz'
-              ? 'bg-cyan-600 text-white font-bold shadow-lg shadow-cyan-500/25'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              ? 'bg-zinc-800 text-zinc-100 font-semibold border border-zinc-700/80 shadow-xs'
+              : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'
           }`}
         >
-          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+          <CheckCircle2 className="w-3.5 h-3.5 text-zinc-300" />
           <span>Quick Quiz</span>
           {session.quizResult && (
             <span
-              className={`w-2 h-2 rounded-full ${
+              className={`w-1.5 h-1.5 rounded-full ${
                 session.quizResult.isCorrect ? 'bg-emerald-400' : 'bg-rose-400'
               }`}
             />
@@ -593,28 +653,28 @@ export const StudySessionView: React.FC<StudySessionViewProps> = ({
 
         <button
           onClick={() => setActiveTab('flashcards')}
-          className={`flex items-center space-x-2 px-4 py-2.5 rounded-2xl transition-all cursor-pointer ${
+          className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg transition-all cursor-pointer ${
             activeTab === 'flashcards'
-              ? 'bg-cyan-600 text-white font-bold shadow-lg shadow-cyan-500/25'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              ? 'bg-zinc-800 text-zinc-100 font-semibold border border-zinc-700/80 shadow-xs'
+              : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'
           }`}
         >
-          <Layers className="w-4 h-4 text-amber-400" />
+          <Layers className="w-3.5 h-3.5 text-zinc-300" />
           <span>Cards ({flashcards.length})</span>
         </button>
 
         <button
           onClick={() => setActiveTab('chat')}
-          className={`flex items-center space-x-2 px-4 py-2.5 rounded-2xl transition-all cursor-pointer ${
+          className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg transition-all cursor-pointer ${
             activeTab === 'chat'
-              ? 'bg-cyan-600 text-white font-bold shadow-lg shadow-cyan-500/25'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              ? 'bg-zinc-800 text-zinc-100 font-semibold border border-zinc-700/80 shadow-xs'
+              : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'
           }`}
         >
-          <MessageSquare className="w-4 h-4 text-sky-400" />
+          <MessageSquare className="w-3.5 h-3.5 text-zinc-300" />
           <span>Chat with {persona.name}</span>
           {chatMessages.length > 0 && (
-            <span className="px-1.5 py-0.2 rounded-full bg-cyan-950 text-cyan-300 text-[10px] font-bold border border-cyan-800">
+            <span className="px-1.5 py-0.2 rounded-full bg-zinc-800 text-zinc-300 text-[10px] font-bold border border-zinc-700">
               {chatMessages.length}
             </span>
           )}
@@ -622,13 +682,13 @@ export const StudySessionView: React.FC<StudySessionViewProps> = ({
 
         <button
           onClick={() => setActiveTab('notes')}
-          className={`flex items-center space-x-2 px-4 py-2.5 rounded-2xl transition-all cursor-pointer ${
+          className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg transition-all cursor-pointer ${
             activeTab === 'notes'
-              ? 'bg-cyan-600 text-white font-bold shadow-lg shadow-cyan-500/25'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              ? 'bg-zinc-800 text-zinc-100 font-semibold border border-zinc-700/80 shadow-xs'
+              : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'
           }`}
         >
-          <FileText className="w-4 h-4 text-purple-400" />
+          <FileText className="w-3.5 h-3.5 text-zinc-300" />
           <span>My Notes {notes.trim() ? '•' : ''}</span>
         </button>
       </div>
@@ -639,60 +699,60 @@ export const StudySessionView: React.FC<StudySessionViewProps> = ({
           {/* ========================================================= */}
           {/* XYRO'S COMPREHENSIVE SOLUTION IN CLEAN POINTS */}
           {/* ========================================================= */}
-          <section className="rounded-3xl border border-slate-800 bg-slate-900/90 p-6 sm:p-7 shadow-xl">
+          <section className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6 sm:p-7 shadow-sm">
             {/* Header */}
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-5 pb-4 border-b border-slate-800">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-5 pb-4 border-b border-zinc-800">
               <div className="flex items-center space-x-3">
-                <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-cyan-500 via-indigo-600 to-purple-600 text-white flex items-center justify-center shadow-md">
+                <div className="w-8 h-8 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-200 flex items-center justify-center shadow-xs">
                   <Zap className="w-4 h-4" />
                 </div>
                 <div>
                   <div className="flex items-center space-x-2">
-                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-cyan-400 px-2 py-0.5 rounded-full bg-cyan-950 border border-cyan-800">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 px-2 py-0.5 rounded-md bg-zinc-800 border border-zinc-700">
                       Step-by-Step
                     </span>
-                    <h3 className="font-extrabold text-white text-base sm:text-lg">
-                      Xyro&apos;s Solution
+                    <h3 className="font-bold text-zinc-100 text-base sm:text-lg">
+                      Solution
                     </h3>
                   </div>
-                  <p className="text-xs text-slate-400">
+                  <p className="text-xs text-zinc-400">
                     Direct answer &bull; Point-by-point derivation &bull; Golden takeaways
                   </p>
                 </div>
               </div>
 
-              <span className="px-3 py-1 rounded-xl bg-purple-950/70 text-purple-300 border border-purple-800 text-xs font-bold">
-                Xyro Master Solution
+              <span className="px-2.5 py-1 rounded-md bg-zinc-800 text-zinc-300 border border-zinc-700 text-xs font-medium">
+                Master Solution
               </span>
             </div>
 
             {/* Direct Answer Highlight */}
-            <div className="mb-6 p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-cyan-950/40 via-indigo-950/30 to-slate-950 border-l-4 border-cyan-500 border-y border-r border-slate-800">
-              <div className="text-[11px] font-bold uppercase tracking-wider text-cyan-400 mb-1.5 flex items-center space-x-1.5">
-                <Zap className="w-3.5 h-3.5" />
+            <div className="mb-5 p-4 sm:p-5 rounded-xl bg-zinc-950 border border-zinc-800">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 mb-1 flex items-center space-x-1.5">
+                <Zap className="w-3.5 h-3.5 text-zinc-300" />
                 <span>Direct Answer</span>
               </div>
-              <p className="text-base font-bold text-white leading-relaxed">
+              <p className="text-base font-semibold text-zinc-100 leading-relaxed">
                 {res.geminiSolution.directAnswer}
               </p>
             </div>
 
             {/* Step-by-Step Points */}
-            <div className="space-y-3.5 mb-6">
-              <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">
+            <div className="space-y-3 mb-5">
+              <h4 className="text-[11px] font-medium uppercase tracking-wider text-zinc-400 mb-1">
                 Derivation & Solution Steps
               </h4>
 
               {res.geminiSolution.stepByStep.map((step) => (
                 <div
                   key={step.stepNumber}
-                  className="rounded-2xl border border-slate-800 bg-slate-950/80 p-4 sm:p-5 shadow-xs"
+                  className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-4 sm:p-5 shadow-xs"
                 >
                   <div className="flex items-center space-x-2.5 mb-2.5">
-                    <span className="w-6 h-6 rounded-lg bg-cyan-600 text-white font-bold text-xs flex items-center justify-center shadow-xs">
+                    <span className="w-6 h-6 rounded-md bg-zinc-800 border border-zinc-700 text-zinc-200 font-semibold text-xs flex items-center justify-center shadow-xs">
                       {step.stepNumber}
                     </span>
-                    <h5 className="font-bold text-white text-sm sm:text-base">
+                    <h5 className="font-semibold text-zinc-100 text-sm sm:text-base">
                       {step.title}
                     </h5>
                   </div>
@@ -703,15 +763,15 @@ export const StudySessionView: React.FC<StudySessionViewProps> = ({
 
                     {/* Formula or Code Snippet */}
                     {step.formulaOrCode && (
-                      <div className="mt-2.5 p-3 rounded-xl bg-slate-900 border border-slate-800 text-cyan-300 font-mono text-xs sm:text-sm overflow-x-auto shadow-inner">
+                      <div className="mt-2.5 p-3 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-200 font-mono text-xs sm:text-sm overflow-x-auto">
                         <code>{step.formulaOrCode}</code>
                       </div>
                     )}
 
                     {/* Tip */}
                     {step.tip && (
-                      <div className="mt-2.5 flex items-start space-x-2 text-xs text-amber-300 bg-amber-950/40 p-2.5 rounded-xl border border-amber-800/60">
-                        <Lightbulb className="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-400" />
+                      <div className="mt-2.5 flex items-start space-x-2 text-xs text-zinc-300 bg-zinc-900 p-2.5 rounded-lg border border-zinc-800">
+                        <Lightbulb className="w-3.5 h-3.5 shrink-0 mt-0.5 text-zinc-400" />
                         <span>{step.tip}</span>
                       </div>
                     )}
@@ -721,27 +781,27 @@ export const StudySessionView: React.FC<StudySessionViewProps> = ({
             </div>
 
             {/* Key Golden Takeaway Banner */}
-            <div className="mb-4 p-4 rounded-2xl bg-emerald-950/40 border border-emerald-800/70">
-              <div className="flex items-center space-x-2 text-emerald-400 font-bold text-[11px] uppercase tracking-wider mb-1">
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>Key Golden Takeaway</span>
+            <div className="mb-3.5 p-4 rounded-xl bg-zinc-950 border border-zinc-800">
+              <div className="flex items-center space-x-2 text-zinc-300 font-semibold text-[11px] uppercase tracking-wider mb-1">
+                <CheckCircle2 className="w-3.5 h-3.5 text-zinc-400" />
+                <span>Key Takeaway</span>
               </div>
-              <p className="text-sm text-emerald-200 font-bold leading-relaxed">
+              <p className="text-sm text-zinc-200 font-medium leading-relaxed">
                 • {res.geminiSolution.keyTakeaway}
               </p>
             </div>
 
             {/* Common Pitfalls in bullet format */}
             {res.geminiSolution.commonPitfalls && res.geminiSolution.commonPitfalls.length > 0 && (
-              <div className="mb-4 p-4 rounded-2xl bg-rose-950/30 border border-rose-800/60">
-                <div className="flex items-center space-x-2 text-rose-400 font-bold text-[11px] uppercase tracking-wider mb-2">
-                  <AlertCircle className="w-3.5 h-3.5" />
+              <div className="mb-3.5 p-4 rounded-xl bg-zinc-950 border border-zinc-800">
+                <div className="flex items-center space-x-2 text-zinc-400 font-medium text-[11px] uppercase tracking-wider mb-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 text-zinc-400" />
                   <span>Traps & Mistakes To Avoid</span>
                 </div>
-                <div className="space-y-1.5 text-xs sm:text-sm text-rose-200">
+                <div className="space-y-1.5 text-xs sm:text-sm text-zinc-300">
                   {res.geminiSolution.commonPitfalls.map((pitfall, idx) => (
                     <div key={idx} className="flex items-start space-x-2">
-                      <span className="text-rose-400 font-bold mt-0.5">•</span>
+                      <span className="text-zinc-500 font-bold mt-0.5">•</span>
                       <span>{pitfall.replace(/^[•\-\*]\s*/, '')}</span>
                     </div>
                   ))}
@@ -751,10 +811,10 @@ export const StudySessionView: React.FC<StudySessionViewProps> = ({
 
             {/* Memory Trick */}
             {res.geminiSolution.memoryTrick && (
-              <div className="p-3.5 rounded-2xl bg-purple-950/30 border border-purple-800/60 flex items-center space-x-3">
-                <Target className="w-4 h-4 text-purple-400 shrink-0" />
-                <div className="text-xs sm:text-sm text-purple-200">
-                  <span className="font-bold text-purple-300 mr-2">Memory Hook:</span>
+              <div className="p-3.5 rounded-xl bg-zinc-950 border border-zinc-800 flex items-center space-x-3">
+                <Target className="w-4 h-4 text-zinc-400 shrink-0" />
+                <div className="text-xs sm:text-sm text-zinc-300">
+                  <span className="font-semibold text-zinc-200 mr-2">Memory Hook:</span>
                   <span>&ldquo;{res.geminiSolution.memoryTrick}&rdquo;</span>
                 </div>
               </div>
@@ -762,12 +822,12 @@ export const StudySessionView: React.FC<StudySessionViewProps> = ({
           </section>
 
           {/* Quick Quiz & Flashcard Navigation bar */}
-          <div className="p-5 rounded-3xl bg-slate-900 border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="p-4 sm:p-5 rounded-2xl bg-zinc-900 border border-zinc-800 flex flex-col sm:flex-row items-center justify-between gap-3">
             <div>
-              <h4 className="font-bold text-white text-sm">
+              <h4 className="font-semibold text-zinc-100 text-sm">
                 Test your knowledge on this problem
               </h4>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-zinc-400">
                 Try the 1-question quiz or flip through key flashcards.
               </p>
             </div>
@@ -775,15 +835,15 @@ export const StudySessionView: React.FC<StudySessionViewProps> = ({
             <div className="flex items-center space-x-2">
               <button
                 onClick={() => setActiveTab('quiz')}
-                className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold shadow-md transition-all cursor-pointer"
+                className="px-3.5 py-1.5 rounded-lg bg-zinc-100 hover:bg-white text-zinc-900 text-xs font-semibold shadow-xs transition-all cursor-pointer"
               >
                 Take Quiz
               </button>
               <button
                 onClick={() => setActiveTab('flashcards')}
-                className="px-4 py-2 rounded-xl bg-slate-800 border border-slate-700 text-slate-200 text-xs font-bold hover:bg-slate-700 transition-all cursor-pointer"
+                className="px-3.5 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs font-semibold hover:bg-zinc-700 transition-all cursor-pointer"
               >
-                Review Flashcards
+                Review Cards
               </button>
             </div>
           </div>
@@ -1021,24 +1081,85 @@ export const StudySessionView: React.FC<StudySessionViewProps> = ({
         </div>
       )}
 
-      {/* TAB 4: CONTEXTUAL FOLLOW-UP CHAT */}
+      {/* TAB 4: CONTEXTUAL FOLLOW-UP CHAT WITH VOICE */}
       {activeTab === 'chat' && (
         <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl animate-in fade-in duration-200">
-          <div className="flex items-center space-x-3 mb-6">
-            <div
-              className={`w-9 h-9 rounded-xl bg-gradient-to-tr ${persona.avatarColor} text-white flex items-center justify-center shadow-md`}
-            >
-              <MessageSquare className="w-4 h-4" />
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 pb-4 border-b border-slate-800/80">
+            <div className="flex items-center space-x-3">
+              <div
+                className={`w-9 h-9 rounded-xl bg-gradient-to-tr ${persona.avatarColor} text-white flex items-center justify-center shadow-md shrink-0`}
+              >
+                <MessageSquare className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="font-bold text-white text-base flex items-center space-x-2">
+                  <span>Chat with {persona.name}</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-cyan-300 border border-slate-700 font-normal">
+                    {persona.role}
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Ask clarifying questions via voice or text &bull; Receive structured point breakdowns.
+                </p>
+              </div>
             </div>
-            <div>
-              <h3 className="font-bold text-white text-base">
-                Chat with {persona.name} ({persona.role})
-              </h3>
-              <p className="text-xs text-slate-400">
-                Ask clarifying questions, simpler analogies, or exam-specific tricks.
-              </p>
+
+            {/* Voice Response Controls */}
+            <div className="flex items-center space-x-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !autoSpeakReply;
+                  setAutoSpeakReply(next);
+                  if (!next && isSpeaking) {
+                    speechManager.stop();
+                  }
+                }}
+                className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center space-x-1.5 transition-all cursor-pointer ${
+                  autoSpeakReply
+                    ? 'bg-cyan-950/80 text-cyan-300 border-cyan-700 shadow-sm'
+                    : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200'
+                }`}
+                title="Automatically vocalize assistant replies aloud"
+              >
+                {autoSpeakReply ? (
+                  <Volume2 className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+                ) : (
+                  <VolumeX className="w-3.5 h-3.5 text-slate-500" />
+                )}
+                <span>Voice Answer: {autoSpeakReply ? 'ON' : 'OFF'}</span>
+              </button>
+
+              {isSpeaking && (
+                <button
+                  type="button"
+                  onClick={() => speechManager.stop()}
+                  className="px-2.5 py-1.5 rounded-xl bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-300 text-xs font-semibold flex items-center space-x-1.5 transition-all cursor-pointer shadow-sm animate-pulse"
+                  title="Stop speaking"
+                >
+                  <VolumeX className="w-3.5 h-3.5 text-rose-400" />
+                  <span>Stop Voice</span>
+                </button>
+              )}
             </div>
           </div>
+
+          {/* Voice Error Notice */}
+          {voiceError && (
+            <div className="mb-4 p-3 rounded-2xl bg-amber-950/50 border border-amber-800 text-amber-200 text-xs flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>{voiceError}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setVoiceError(null)}
+                className="text-amber-400 hover:text-white font-bold text-xs ml-3 cursor-pointer"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
 
           {/* Suggested Follow-Ups */}
           {res.interactiveElements.suggestedFollowUps &&
@@ -1065,13 +1186,20 @@ export const StudySessionView: React.FC<StudySessionViewProps> = ({
           {/* Messages Container */}
           <div className="min-h-[220px] max-h-[380px] overflow-y-auto space-y-3 p-4 rounded-2xl bg-slate-950 border border-slate-800 mb-4">
             {chatMessages.length === 0 ? (
-              <div className="text-center py-8 text-slate-500 text-xs">
-                No follow-up messages yet. Ask {persona.name} anything below!
+              <div className="text-center py-10 text-slate-500 text-xs">
+                <div className="w-10 h-10 mx-auto mb-2 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-cyan-400">
+                  <Mic className="w-5 h-5" />
+                </div>
+                <p className="font-medium text-slate-400">No messages yet.</p>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Type or click the microphone to ask {persona.name} anything about this problem!
+                </p>
               </div>
             ) : (
               chatMessages.map((msg) => {
                 const isUser = msg.role === 'user';
                 const isError = !isUser && msg.content.startsWith('Error:');
+                const isCurrentlySpeakingThis = isSpeaking && activeSpokenMessageId === msg.id;
 
                 return (
                   <div
@@ -1082,13 +1210,50 @@ export const StudySessionView: React.FC<StudySessionViewProps> = ({
                       <div className="flex items-center space-x-2 mb-1 px-1 text-[11px] text-slate-400">
                         <span className={`w-2 h-2 rounded-full bg-gradient-to-r ${persona.avatarColor}`} />
                         <span className="font-semibold text-slate-300">{persona.name}</span>
+
+                        {/* Text-to-speech button for this message */}
+                        {!isError && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (isCurrentlySpeakingThis) {
+                                speechManager.stop();
+                              } else {
+                                speechManager.speak(msg.content, session.persona, msg.id);
+                              }
+                            }}
+                            className={`px-2 py-0.5 rounded-lg border text-[11px] font-medium flex items-center space-x-1 transition-all cursor-pointer ml-1 ${
+                              isCurrentlySpeakingThis
+                                ? 'bg-cyan-950 text-cyan-300 border-cyan-600 shadow-xs'
+                                : 'text-slate-400 hover:text-cyan-300 border-slate-800 hover:border-slate-700'
+                            }`}
+                            title={isCurrentlySpeakingThis ? 'Stop voice reading' : 'Read answer aloud'}
+                          >
+                            {isCurrentlySpeakingThis ? (
+                              <>
+                                <div className="flex items-end space-x-0.5 h-2.5">
+                                  <span className="w-0.5 h-2.5 bg-cyan-400 animate-pulse" />
+                                  <span className="w-0.5 h-1.5 bg-cyan-300 animate-pulse [animation-delay:0.15s]" />
+                                  <span className="w-0.5 h-2 bg-cyan-400 animate-pulse [animation-delay:0.3s]" />
+                                </div>
+                                <span className="text-[10px]">Playing</span>
+                              </>
+                            ) : (
+                              <>
+                                <Volume2 className="w-3 h-3 text-cyan-400" />
+                                <span className="text-[10px]">Listen</span>
+                              </>
+                            )}
+                          </button>
+                        )}
+
                         <button
                           onClick={() => {
                             navigator.clipboard.writeText(msg.content);
                             setCopiedMessageId(msg.id);
                             setTimeout(() => setCopiedMessageId(null), 2000);
                           }}
-                          className="text-slate-500 hover:text-cyan-300 transition-colors p-0.5 ml-1 cursor-pointer"
+                          className="text-slate-500 hover:text-cyan-300 transition-colors p-0.5 cursor-pointer"
                           title="Copy reply"
                         >
                           {copiedMessageId === msg.id ? (
@@ -1100,11 +1265,13 @@ export const StudySessionView: React.FC<StudySessionViewProps> = ({
                       </div>
                     )}
                     <div
-                      className={`max-w-[90%] rounded-2xl p-4 text-xs sm:text-sm leading-relaxed ${
+                      className={`max-w-[90%] rounded-2xl p-4 text-xs sm:text-sm leading-relaxed transition-all ${
                         isUser
                           ? 'bg-cyan-600 text-white rounded-br-none shadow-md'
                           : isError
                           ? 'bg-rose-950/60 border border-rose-800 text-rose-200 rounded-bl-none shadow-sm'
+                          : isCurrentlySpeakingThis
+                          ? 'bg-slate-900 border-2 border-cyan-500/60 text-slate-100 rounded-bl-none shadow-lg shadow-cyan-950/40 ring-1 ring-cyan-500/30'
                           : 'bg-slate-900/95 border border-slate-800 text-slate-200 rounded-bl-none shadow-md'
                       }`}
                     >
@@ -1124,26 +1291,123 @@ export const StudySessionView: React.FC<StudySessionViewProps> = ({
             )}
           </div>
 
-          {/* Chat Input */}
+          {/* Active Voice Listening Banner */}
+          {isVoiceListening && (
+            <div className="mb-3 p-3.5 rounded-2xl bg-gradient-to-r from-cyan-950/80 via-slate-900 to-indigo-950/80 border border-cyan-500/50 shadow-lg animate-in fade-in duration-200">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                <div className="flex items-center space-x-3">
+                  <div className="relative flex items-center justify-center w-8 h-8 rounded-xl bg-rose-500/20 border border-rose-500/40">
+                    <span className="w-3 h-3 rounded-full bg-rose-500 animate-ping absolute" />
+                    <Mic className="w-4 h-4 text-rose-400 relative z-10" />
+                  </div>
+                  <div>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-xs font-bold text-white">Listening... Speak now</span>
+                      <div className="flex items-end space-x-0.5 h-3">
+                        <span className="w-1 h-2 bg-cyan-400 animate-bounce" />
+                        <span className="w-1 h-3.5 bg-cyan-300 animate-bounce [animation-delay:0.12s]" />
+                        <span className="w-1 h-1.5 bg-cyan-400 animate-bounce [animation-delay:0.24s]" />
+                        <span className="w-1 h-3 bg-cyan-300 animate-bounce [animation-delay:0.36s]" />
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-cyan-300/90 mt-0.5 truncate max-w-md">
+                      {chatInput || interimVoiceText || 'e.g. "Can you explain this step with an intuitive analogy?"'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-2 self-end sm:self-center">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      voiceRecognition.stop();
+                      setIsVoiceListening(false);
+                      if (chatInput.trim()) {
+                        handleSendChatMessage(chatInput.trim());
+                      }
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-500 hover:from-cyan-400 hover:to-indigo-400 text-white font-bold text-xs shadow-md transition-all cursor-pointer flex items-center space-x-1.5"
+                  >
+                    <Send className="w-3 h-3" />
+                    <span>Send Voice Query</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      voiceRecognition.stop();
+                      setIsVoiceListening(false);
+                      setInterimVoiceText('');
+                    }}
+                    className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-all cursor-pointer"
+                  >
+                    Done Speaking
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Chat Input with Microphone */}
           <form
             onSubmit={(e) => {
               e.preventDefault();
+              if (isVoiceListening) {
+                voiceRecognition.stop();
+                setIsVoiceListening(false);
+              }
               handleSendChatMessage();
             }}
             className="flex items-center space-x-2"
           >
+            {/* Microphone Toggle Button */}
+            <button
+              type="button"
+              onClick={handleToggleVoiceListen}
+              disabled={isSendingChat}
+              className={`p-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-center shrink-0 ${
+                isVoiceProcessing
+                  ? 'bg-zinc-800 text-zinc-200 border-zinc-700'
+                  : isVoiceListening
+                  ? 'bg-rose-900/80 text-rose-100 border-rose-700 animate-pulse'
+                  : 'bg-zinc-950 text-zinc-300 border-zinc-800 hover:border-zinc-700 hover:bg-zinc-900'
+              }`}
+              title={isVoiceListening ? 'Stop recording voice' : 'Speak your question via microphone'}
+            >
+              {isVoiceProcessing ? (
+                <div className="w-4 h-4 border-2 border-zinc-400 border-t-transparent rounded-full animate-spin" />
+              ) : isVoiceListening ? (
+                <MicOff className="w-4 h-4 text-rose-300" />
+              ) : (
+                <Mic className="w-4 h-4 text-zinc-400" />
+              )}
+            </button>
+
+            {/* Text Input */}
             <input
               type="text"
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
-              placeholder={`Ask ${persona.name} anything about this...`}
-              disabled={isSendingChat}
-              className="flex-1 px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs sm:text-sm text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+              placeholder={
+                isVoiceProcessing
+                  ? 'Transcribing audio...'
+                  : isVoiceListening
+                  ? 'Listening to speech... speak your question now'
+                  : `Ask ${persona.name} a question... (Type or use mic)`
+              }
+              disabled={isSendingChat || isVoiceProcessing}
+              className={`flex-1 px-4 py-2.5 rounded-xl bg-zinc-950 border text-xs sm:text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none transition-all ${
+                isVoiceListening
+                  ? 'border-rose-500 ring-1 ring-rose-500/50'
+                  : 'border-zinc-800 focus:ring-1 focus:ring-zinc-600'
+              }`}
             />
+
+            {/* Send Button */}
             <button
               type="submit"
-              disabled={isSendingChat || !chatInput.trim()}
-              className="p-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white disabled:opacity-50 transition-all cursor-pointer"
+              disabled={isSendingChat || isVoiceProcessing || (!chatInput.trim() && !interimVoiceText.trim())}
+              className="p-2.5 rounded-xl bg-zinc-100 hover:bg-white text-zinc-900 font-semibold disabled:opacity-40 transition-all cursor-pointer shrink-0 shadow-xs"
+              title="Send message"
             >
               <Send className="w-4 h-4" />
             </button>

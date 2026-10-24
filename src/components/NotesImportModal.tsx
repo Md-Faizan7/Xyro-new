@@ -39,6 +39,13 @@ export const NotesImportModal: React.FC<NotesImportModalProps> = ({
   const [textContent, setTextContent] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
+  const [analysisResult, setAnalysisResult] = useState<{
+    noteName: string;
+    summary?: string;
+    topics: string[];
+    keyFormulas: string[];
+    isError?: boolean;
+  } | null>(null);
 
   if (!isOpen) return null;
 
@@ -103,23 +110,36 @@ export const NotesImportModal: React.FC<NotesImportModalProps> = ({
 
   const handleAnalyzeNote = async (note: ImportedNote) => {
     setAnalyzingId(note.id);
+    setAnalysisResult(null);
     try {
       const res = await fetch('/api/study/analyze-notes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ note }),
       });
+      const contentType = res.headers.get('content-type') || '';
+      if (!res.ok || !contentType.includes('application/json')) {
+        throw new Error('Analysis failed or server returned non-JSON.');
+      }
       const data = await res.json();
       if (data.topics && Array.isArray(data.topics) && onDiscoveredTopics) {
         onDiscoveredTopics(data.topics);
       }
-      if (data.summary) {
-        alert(
-          `📘 Key Topics Found in "${note.name}":\n\n${(data.topics || []).join(', ')}\n\nFormulas / Rules:\n${(data.keyFormulas || []).join('\n')}\n\nSummary:\n${data.summary}\n\n✨ These topics are now added as suggestions in Xyro!`
-        );
-      }
-    } catch (e) {
+      setAnalysisResult({
+        noteName: note.name,
+        summary: data.summary,
+        topics: data.topics || [],
+        keyFormulas: data.keyFormulas || [],
+      });
+    } catch (e: any) {
       console.error(e);
+      setAnalysisResult({
+        noteName: note.name,
+        summary: e.message || 'Could not scan notes.',
+        topics: [],
+        keyFormulas: [],
+        isError: true,
+      });
     } finally {
       setAnalyzingId(null);
     }
@@ -229,6 +249,37 @@ export const NotesImportModal: React.FC<NotesImportModalProps> = ({
                 <span>Save to Context Notes</span>
               </button>
             </form>
+          )}
+
+          {/* Scanned Analysis Result Banner */}
+          {analysisResult && (
+            <div className={`p-4 rounded-2xl border text-xs space-y-2 ${
+              analysisResult.isError
+                ? 'bg-rose-950/40 border-rose-800 text-rose-300'
+                : 'bg-cyan-950/40 border-cyan-800/80 text-cyan-200'
+            }`}>
+              <div className="flex items-center justify-between font-bold text-white">
+                <span>📘 Scanned from &ldquo;{analysisResult.noteName}&rdquo;</span>
+                <button
+                  type="button"
+                  onClick={() => setAnalysisResult(null)}
+                  className="text-slate-400 hover:text-white cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+              {analysisResult.summary && <p className="text-slate-300 leading-relaxed">{analysisResult.summary}</p>}
+              {analysisResult.topics.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  <span className="text-cyan-400 font-semibold mr-1">Discovered Topics:</span>
+                  {analysisResult.topics.map((t, i) => (
+                    <span key={i} className="px-2 py-0.5 rounded-md bg-cyan-900/60 text-cyan-200 border border-cyan-700/60 text-[11px]">
+                      {t}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
 
           {/* Currently Attached Notes List */}

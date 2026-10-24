@@ -36,25 +36,25 @@ const STUDY_SCHEMA = {
       properties: {
         buddyGreeting: {
           type: Type.STRING,
-          description: 'A warm, encouraging persona-tailored greeting and reaction to the problem.',
+          description: 'A very short 1-sentence persona greeting (under 10 words).',
         },
         coreIntent: {
           type: Type.STRING,
-          description: 'Deconstruct what this question is really asking. Clarify tricky terms, assumptions, and remove confusion.',
+          description: '1 to 2 concise bullet points explaining what is being solved.',
         },
         prerequisites: {
           type: Type.ARRAY,
           items: { type: Type.STRING },
-          description: 'List of foundational concepts, laws, or formulas needed before solving.',
+          description: '2 to 3 essential formulas or laws needed.',
         },
         intuitiveAnalogy: {
           type: Type.STRING,
-          description: 'A vivid, relatable real-world metaphor or intuition that makes the concept click.',
+          description: '1 concise real-world analogy sentence.',
         },
         thinkingRoadmap: {
           type: Type.ARRAY,
           items: { type: Type.STRING },
-          description: '3 to 5 logical checkpoints for how to think through and tackle this problem.',
+          description: '2 to 3 short checkpoint action steps.',
         },
       },
       required: ['buddyGreeting', 'coreIntent', 'prerequisites', 'intuitiveAnalogy', 'thinkingRoadmap'],
@@ -64,7 +64,7 @@ const STUDY_SCHEMA = {
       properties: {
         directAnswer: {
           type: Type.STRING,
-          description: 'The clear, direct takeaway or numerical/conceptual final answer.',
+          description: 'The clear numerical or conceptual direct answer in 1 sentence.',
         },
         stepByStep: {
           type: Type.ARRAY,
@@ -73,26 +73,26 @@ const STUDY_SCHEMA = {
             properties: {
               stepNumber: { type: Type.INTEGER },
               title: { type: Type.STRING },
-              explanation: { type: Type.STRING },
-              formulaOrCode: { type: Type.STRING, description: 'Optional math formula, equation, or code snippet if relevant' },
-              tip: { type: Type.STRING, description: 'Insightful hint or caution for this step' },
+              explanation: { type: Type.STRING, description: '1 to 2 concise sentences explaining the step' },
+              formulaOrCode: { type: Type.STRING, description: 'Optional math formula or code snippet' },
+              tip: { type: Type.STRING, description: '1 short practical tip or caution' },
             },
             required: ['stepNumber', 'title', 'explanation'],
           },
-          description: 'Detailed, step-by-step rigorous solution.',
+          description: '2 to 3 concise steps maximum.',
         },
         keyTakeaway: {
           type: Type.STRING,
-          description: 'The most important lesson, rule, or concept to remember for future tests.',
+          description: '1 punchy golden rule to remember.',
         },
         commonPitfalls: {
           type: Type.ARRAY,
           items: { type: Type.STRING },
-          description: '1 to 3 frequent mistakes students make with this problem.',
+          description: '1 to 2 frequent mistakes students make.',
         },
         memoryTrick: {
           type: Type.STRING,
-          description: 'A mnemonic, rhyme, or mental hook to never forget this concept.',
+          description: '1 brief catchy mnemonic or memory hook.',
         },
       },
       required: ['directAnswer', 'stepByStep', 'keyTakeaway', 'commonPitfalls', 'memoryTrick'],
@@ -110,7 +110,7 @@ const STUDY_SCHEMA = {
               description: 'Exactly 4 multiple choice options',
             },
             correctIndex: { type: Type.INTEGER, description: '0-based index of correct option' },
-            explanation: { type: Type.STRING, description: 'Explanation of why the correct option is right' },
+            explanation: { type: Type.STRING, description: 'Brief 1-sentence explanation of why it is right' },
           },
           required: ['question', 'options', 'correctIndex', 'explanation'],
         },
@@ -120,17 +120,17 @@ const STUDY_SCHEMA = {
             type: Type.OBJECT,
             properties: {
               front: { type: Type.STRING, description: 'Question or concept on the front' },
-              back: { type: Type.STRING, description: 'Clear concise answer or definition on the back' },
+              back: { type: Type.STRING, description: 'Clear concise definition on the back' },
               hint: { type: Type.STRING, description: 'Quick recall hint' },
             },
             required: ['front', 'back', 'hint'],
           },
-          description: '2 to 3 high-yield review flashcards for spaced repetition',
+          description: 'Exactly 2 high-yield review flashcards',
         },
         suggestedFollowUps: {
           type: Type.ARRAY,
           items: { type: Type.STRING },
-          description: '3 relevant follow-up questions the student might want to ask next',
+          description: '2 short relevant follow-up questions',
         },
       },
       required: ['practiceQuiz', 'flashcards', 'suggestedFollowUps'],
@@ -141,14 +141,15 @@ const STUDY_SCHEMA = {
 
 // Persona instructions
 function getPersonaPrompt(persona: string): string {
-  switch (persona) {
+  switch (persona?.toLowerCase()) {
     case 'vision':
     case 'marcus':
       return 'You are Vision, a logical, precise, and first-principles academic architect. You break down questions using deep structural clarity and concise, high-signal bullet points.';
     case 'xyro':
     case 'zyro':
     case 'maya':
-      return 'You are Xyro, an intuitive, creative, and visual learning companion. You specialize in punchy analogies, mental diagrams, and crystal-clear bullet points.';
+    case 'meow':
+      return 'You are Meow (Xyro), an intuitive, creative, and visual learning companion. You specialize in punchy analogies, mental diagrams, and crystal-clear bullet points.';
     case 'thala':
     case 'sam':
       return 'You are Thala, the calm, clutch exam strategist. You deliver high-yield insights, spot trick questions instantly, and provide sharp, bulleted shortcuts.';
@@ -165,17 +166,26 @@ async function generateWithFallback(options: {
   config?: any;
   preferredModels?: string[];
 }) {
-  const models = options.preferredModels || ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-3.1-flash-lite'];
+  // Use active models (gemini-3.1-flash-lite first for lightning speed, fallback to gemini-3.8-flash)
+  const models = options.preferredModels || ['gemini-3.1-flash-lite', 'gemini-3.8-flash'];
   let lastError: any = null;
+
+  // Set thinkingBudget: 0 by default to prevent models from spending seconds generating hidden thoughts
+  const mergedConfig = {
+    thinkingConfig: { thinkingBudget: 0 },
+    ...options.config,
+  };
 
   for (const model of models) {
     try {
       const response = await ai.models.generateContent({
         model,
         contents: options.contents,
-        config: options.config,
+        config: mergedConfig,
       });
-      return response;
+      if (response && response.text) {
+        return response;
+      }
     } catch (err: any) {
       console.warn(`[AI Studio] Model ${model} failed, attempting next model:`, err.message || err);
       lastError = err;
@@ -198,27 +208,27 @@ app.post('/api/study/solve', async (req, res) => {
     const systemInstruction = `
 ${personaGuide}
 You are operating the Xyro.ai two-stage learning engine.
-CRITICAL FORMATTING & LENGTH RULES:
-1. STRICTLY BRIEF & INFORMATIVE: Avoid long, congested paragraphs or walls of text!
-2. USE BULLET POINTS & POINT FORMAT: Present thoughts as clean, bite-sized bullet points.
-3. Keep each explanation step under 2 to 3 concise sentences.
-4. Highlight key terms and equations cleanly.
-5. If the student provides imported class notes, lecture slides (PDFs), or handwritten notes (images), closely align with their specific course notations, definitions, diagram labels, and curriculum context!
+CRITICAL SPEED & CONCISENESS RULES:
+1. EXTREMELY RAPID & DIRECT: Start answering immediately. Zero conversational fluff, zero filler. Keep output compact so students get their answers in 1-2 seconds.
+2. STRICT BULLET POINTS: Write sharp, compact bullet points (1-2 sentences per point).
+3. NO ESSAYS OR TEXT WALLS: Give maximum technical signal with minimum words.
+4. Keep stepByStep to 2-3 clear calculation/logic steps.
+5. If student notes are attached, align with their formulas and terminology.
 
 STRUCTURE:
 1. FIRST STAGE (Stage 1: Question Breakdown):
-   - buddyGreeting: 1 short, lively greeting (1 sentence).
-   - coreIntent: Brief point-format explanation (1-2 bullet points or short sentences) of what the question is really asking.
-   - prerequisites: 3-4 short bullet phrases (laws, formulas, concepts).
-   - intuitiveAnalogy: 1-2 punchy sentences capturing the core intuition.
-   - thinkingRoadmap: 3-4 short numbered steps (e.g., "1. Identify...", "2. Check...").
+   - buddyGreeting: 1 ultra-short greeting sentence (under 10 words).
+   - coreIntent: 1-2 concise bullet points explaining what is being solved.
+   - prerequisites: 2-3 essential formulas/laws (short bullet items).
+   - intuitiveAnalogy: 1 punchy real-world analogy sentence.
+   - thinkingRoadmap: 2-3 numbered action steps (e.g., "1. State given values", "2. Apply law", "3. Compute").
 
 2. SECOND STAGE (Stage 2: Gemini Solution):
-   - directAnswer: 1 crisp takeaway sentence giving the direct answer.
-   - stepByStep: 2 to 3 concise steps maximum. Each step has a short explanation (1-2 bullet sentences), optional formula/code, and a 1-sentence tip.
-   - keyTakeaway: 1 punchy golden rule.
-   - commonPitfalls: 2 short bullet points of common mistakes.
-   - memoryTrick: 1 catchy, brief mnemonic or memory hook.
+   - directAnswer: 1 direct takeaway or numerical value in 1 sentence.
+   - stepByStep: Exactly 2 or 3 numbered steps. Each step has title, 1-2 sentence explanation, optional formula, and 1 short tip.
+   - keyTakeaway: 1 high-yield golden rule.
+   - commonPitfalls: 1-2 short mistakes to avoid.
+   - memoryTrick: 1 brief mnemonic or hook.
 
 Parameters:
 - Target Subject: ${subject || 'General'}
@@ -266,7 +276,9 @@ Please first explain the question and its underlying concept in brief points, an
         systemInstruction,
         responseMimeType: 'application/json',
         responseSchema: STUDY_SCHEMA,
-        temperature: 0.7,
+        temperature: 0.2,
+        maxOutputTokens: 1200,
+        thinkingConfig: { thinkingBudget: 0 },
       },
     });
 
@@ -309,8 +321,7 @@ app.post('/api/study/analyze-notes', async (req, res) => {
       text: 'Analyze these uploaded notes (handwritten image or PDF). Extract a high-yield summary in 2-3 bullet points, list 3-5 key topics/concepts identified, and extract 2-4 important formulas or definitions found. Return valid JSON with keys: "summary" (string), "topics" (array of strings), and "keyFormulas" (array of strings).',
     });
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
+    const response = await generateWithFallback({
       contents: { parts },
       config: {
         systemInstruction: 'You are a technical study notes analyzer. Extract crisp, clean, bullet-point summaries and formulas from student notes.',
@@ -325,6 +336,46 @@ app.post('/api/study/analyze-notes', async (req, res) => {
     res.status(500).json({
       error: err.message || 'Failed to analyze note.',
     });
+  }
+});
+
+// POST /api/study/transcribe-audio - Universal voice recognition audio transcription powered by Gemini
+app.post('/api/study/transcribe-audio', async (req, res) => {
+  try {
+    const { audioData, mimeType = 'audio/webm' } = req.body;
+    if (!audioData) {
+      return res.status(400).json({ error: 'Audio data is required.' });
+    }
+
+    const base64Clean = audioData.replace(/^data:[^;]+;base64,/, '');
+    const cleanMime = (mimeType || 'audio/webm').split(';')[0].trim();
+
+    const response = await generateWithFallback({
+      contents: {
+        parts: [
+          {
+            inlineData: {
+              mimeType: cleanMime,
+              data: base64Clean,
+            },
+          },
+          {
+            text: 'Transcribe what the user says in this audio clip verbatim into clean text. It may be an academic study question, physics problem, or math concept. Return ONLY the transcribed words, nothing else. If there is no audible speech or only background silence, return an empty string.',
+          },
+        ],
+      },
+      config: {
+        temperature: 0.1,
+        maxOutputTokens: 250,
+        thinkingConfig: { thinkingBudget: 0 },
+      },
+    });
+
+    const text = (response.text || '').trim();
+    res.json({ text });
+  } catch (err: any) {
+    console.error('Error in /api/study/transcribe-audio:', err);
+    res.status(500).json({ error: err.message || 'Failed to transcribe audio' });
   }
 });
 
@@ -446,12 +497,13 @@ CRITICAL RULES FOR CHAT REPLIES (ACCURACY & CLEAN POINT FORMAT):
       contents[0].parts.unshift(...noteParts);
     }
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
+    const response = await generateWithFallback({
       contents,
       config: {
         systemInstruction,
-        temperature: 0.3,
+        temperature: 0.2,
+        maxOutputTokens: 500,
+        thinkingConfig: { thinkingBudget: 0 },
       },
     });
 
@@ -499,8 +551,7 @@ Instead, point them toward the first step, a question to ask themselves, or the 
 Keep it under 3-4 sentences, encouraging and thoughtful.
 `;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
+    const response = await generateWithFallback({
       contents: `Question: "${question}" (Subject: ${subject}, Level: ${level})`,
       config: {
         systemInstruction,
@@ -513,6 +564,11 @@ Keep it under 3-4 sentences, encouraging and thoughtful.
     console.error('Error in /api/study/hint:', err);
     res.status(500).json({ error: err.message || 'Failed to generate hint.' });
   }
+});
+
+// Ensure unhandled /api/* routes return JSON rather than falling through to Vite HTML
+app.all('/api/*', (req, res) => {
+  res.status(404).json({ error: `API route not found: ${req.method} ${req.originalUrl}` });
 });
 
 // Vite middleware in dev or static files in production

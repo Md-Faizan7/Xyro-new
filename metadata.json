@@ -1,6 +1,6 @@
 {
-  "name": "StudyBuddy AI",
-  "description": "An interactive study companion that breaks down questions conceptually before delivering comprehensive, step-by-step solutions with flashcards and quizzes.",
+  "name": "Xyro AI",
+  "description": "An interactive study companion that breaks down questions into brief, informative points before delivering concise, step-by-step master solutions.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
